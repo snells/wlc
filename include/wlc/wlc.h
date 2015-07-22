@@ -91,8 +91,7 @@ struct wlc_modifiers {
 };
 
 /** Interface struct for communicating with wlc. */
-struct wlc_interface {
-   struct {
+typedef struct {
       /** Output was created. Return false if you want to destroy the output. (ex. failed to allocate data related to view) */
       bool (*created)(wlc_handle output);
 
@@ -104,9 +103,16 @@ struct wlc_interface {
 
       /** Output resolution changed. */
       void (*resolution)(wlc_handle output, const struct wlc_size *from, const struct wlc_size *to);
-   } output;
+   } wlc_interface_output;
 
-   struct {
+typedef struct {
+  void (*geometry)(wlc_handle view, const struct wlc_geometry*);
+  
+  /** Request to disable or enable the given state for view. Apply using wlc_view_set_state to agree. */
+  void (*state)(wlc_handle view, enum wlc_view_state_bit, bool toggle);
+} wlc_interface_view_request;
+  
+typedef  struct {
       /** View was created. Return false if you want to destroy the view. (ex. failed to allocate data related to view) */
       bool (*created)(wlc_handle view);
 
@@ -118,22 +124,16 @@ struct wlc_interface {
 
       /** View was moved to output. */
       void (*move_to_output)(wlc_handle view, wlc_handle from_output, wlc_handle to_output);
+  wlc_interface_view_request request;
 
-      struct {
-         /** Request to set given geometry for view. Apply using wlc_view_set_geometry to agree. */
-         void (*geometry)(wlc_handle view, const struct wlc_geometry*);
+   } wlc_interface_view;
 
-         /** Request to disable or enable the given state for view. Apply using wlc_view_set_state to agree. */
-         void (*state)(wlc_handle view, enum wlc_view_state_bit, bool toggle);
-      } request;
-   } view;
-
-   struct {
+typedef struct {
       /** Key event was triggered, view handle will be zero if there was no focus. */
       bool (*key)(wlc_handle view, uint32_t time, const struct wlc_modifiers*, uint32_t key, uint32_t sym, enum wlc_key_state);
-   } keyboard;
+   } wlc_interface_keyboard;
 
-   struct {
+typedef struct {
       /** Button event was triggered, view handle will be zero if there was no focus. */
       bool (*button)(wlc_handle view, uint32_t time, const struct wlc_modifiers*, uint32_t button, enum wlc_button_state);
 
@@ -142,22 +142,41 @@ struct wlc_interface {
 
       /** Motion event was triggered, view handle will be zero if there was no focus. */
       bool (*motion)(wlc_handle view, uint32_t time, const struct wlc_origin*);
-   } pointer;
+   } wlc_interface_pointer;
 
-   struct {
+typedef struct {
       /** Touch event was triggered, view handle will be zero if there was no focus. */
       bool (*touch)(wlc_handle view, uint32_t time, const struct wlc_modifiers*, enum wlc_touch_type, int32_t slot, const struct wlc_origin*);
-   } touch;
+   } wlc_interface_touch;
 
-   struct {
+typedef struct {
       /** Compositor is ready to accept clients. */
       void (*ready)(void);
-   } compositor;
-};
+   } wlc_interface_compositor;
+
+
+/** Interface struct for communicating with wlc. */
+typedef struct wlc_interface {
+  wlc_interface_output output;
+  wlc_interface_view view;
+  wlc_interface_keyboard keyboard;
+  wlc_interface_touch touch;
+  wlc_interface_pointer pointer;
+  wlc_interface_compositor compositor;
+} s_interface;
 
 /** -- Core API */
 
 /** Initialize wlc. Returns false on failure. */
+
+
+
+struct wlc_interface *bare_s_interface();
+void exec_term();
+void cl_relayout(wlc_handle output);
+void cl_exec(char *bin);
+void cl_set_geo(wlc_handle view, int32_t x, int32_t y, uint32_t w, uint32_t h);
+
 bool wlc_init(const struct wlc_interface *interface, int argc, char *argv[]);
 
 /** Terminate wlc. */

@@ -5,6 +5,7 @@
 #include <sys/wait.h>
 #include <sys/time.h>
 #include <chck/string/string.h>
+#include <chck/math/math.h>
 #include "internal.h"
 #include "visibility.h"
 #include "compositor/compositor.h"
@@ -94,7 +95,45 @@ backtrace(int signal)
    exit(EXIT_FAILURE);
 }
 
-static void
+struct wlc_interface baresswlc;
+struct wlc_interface *bare_s_interface() {
+  return &baresswlc;
+}
+void exec_term() {
+  wlc_exec("weston-terminal", (char *const[]) { "weston-terminal", NULL });
+}
+void cl_exec(char *bin) {
+    wlc_exec(bin, (char *const[]) { bin, NULL });
+}
+
+void cl_set_geo(wlc_handle view, int32_t x, int32_t y, uint32_t w, uint32_t h) {
+  struct wlc_geometry g = {{x, y}, {w,h}};
+  wlc_view_set_geometry(view, &g);
+}
+
+void
+cl_relayout(wlc_handle output)
+{
+   const struct wlc_size *r;
+   if (!(r = wlc_output_get_resolution(output)))
+      return;
+
+   size_t memb;
+   const wlc_handle *views = wlc_output_get_views(output, &memb);
+
+   bool toggle = false;
+   uint32_t y = 0;
+   uint32_t w = r->w / 2, h = r->h / chck_maxu32((1 + memb) / 2, 1);
+   for (size_t i = 0; i < memb; ++i) {
+      struct wlc_geometry g = { { (toggle ? w : 0), y }, { (!toggle && i == memb - 1 ? r->w : w), h } };
+      wlc_view_set_geometry(views[i], &g);
+      y = y + (!(toggle = !toggle) ? h : 0);
+   }
+}
+
+
+
+void
 fpehandler(int signal)
 {
    (void)signal;
