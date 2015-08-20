@@ -14,6 +14,34 @@
 // FIXME: this is a hack
 static EGLNativeDisplayType INVALID_DISPLAY = (EGLNativeDisplayType)~0;
 
+static const char*
+name_for_connector(enum wlc_connector_type connector)
+{
+   switch (connector) {
+      case WLC_CONNECTOR_WLC: return "WLC";
+      case WLC_CONNECTOR_UNKNOWN: return "Unknown";
+      case WLC_CONNECTOR_VGA: return "VGA";
+      case WLC_CONNECTOR_DVII: return "DVI-I";
+      case WLC_CONNECTOR_DVID: return "DVI-D";
+      case WLC_CONNECTOR_DVIA: return "DVI-A";
+      case WLC_CONNECTOR_COMPOSITE: return "Composite";
+      case WLC_CONNECTOR_SVIDEO: return "SVIDEO";
+      case WLC_CONNECTOR_LVDS: return "LVDS";
+      case WLC_CONNECTOR_COMPONENT: return "Component";
+      case WLC_CONNECTOR_DIN: return "DIN";
+      case WLC_CONNECTOR_DP: return "DP";
+      case WLC_CONNECTOR_HDMIA: return "HDMI-A";
+      case WLC_CONNECTOR_HDMIB: return "HDMI-B";
+      case WLC_CONNECTOR_TV: return "TV";
+      case WLC_CONNECTOR_eDP: return "eDP";
+      case WLC_CONNECTOR_VIRTUAL: return "Virtual";
+      case WLC_CONNECTOR_DSI: return "DSI";
+   }
+
+   assert(0 && "something is missing from the list above");
+   return "UNNAMED";
+}
+
 bool
 wlc_output_information_add_mode(struct wlc_output_information *info, struct wlc_output_mode *mode)
 {
@@ -36,6 +64,7 @@ wlc_output_information_release(struct wlc_output_information *info)
       return;
 
    chck_iter_pool_release(&info->modes);
+   chck_string_release(&info->name);
    chck_string_release(&info->make);
    chck_string_release(&info->model);
 }
@@ -58,10 +87,10 @@ wl_output_bind(struct wl_client *client, void *data, uint32_t version, uint32_t 
 
    // FIXME: update on wlc_output_set_information
    wl_output_send_geometry(resource, output->information.x, output->information.y,
-       output->information.physical_width, output->information.physical_height, output->information.subpixel,
-       (output->information.make.data ? output->information.make.data : "unknown"),
-       (output->information.model.data ? output->information.model.data : "model"),
-       output->information.transform);
+                           output->information.physical_width, output->information.physical_height, output->information.subpixel,
+                           (output->information.make.data ? output->information.make.data : "unknown"),
+                           (output->information.model.data ? output->information.model.data : "model"),
+                           output->information.transform);
 
    assert(output->information.scale > 0);
    if (version >= WL_OUTPUT_SCALE_SINCE_VERSION)
@@ -282,14 +311,6 @@ cb_idle_timer(void *data)
    return 1;
 }
 
-static int
-cb_sleep_timer(void *data)
-{
-   assert(data);
-   wlc_output_set_sleep_ptr(convert_from_wlc_handle((wlc_handle)data, "output"), true);
-   return 1;
-}
-
 void
 wlc_output_finish_frame(struct wlc_output *output, const struct timespec *ts)
 {
@@ -402,24 +423,6 @@ wlc_output_schedule_repaint(struct wlc_output *output)
 
    output->state.activity = true;
 
-   wlc_handle *h;
-   chck_iter_pool_for_each(&output->views, h) {
-      struct wlc_view *v;
-      struct wlc_surface *s;
-      if (!(v = convert_from_wlc_handle(*h, "view")) ||
-          !(s = convert_from_wlc_resource(v->surface, "surface")))
-         continue;
-
-      if (!s->commit.attached || !(v->commit.state & WLC_BIT_FULLSCREEN))
-         continue;
-
-      if (!view_visible(v, s, output->active.mask))
-         continue;
-
-      wlc_output_set_sleep_ptr(output, false);
-      break;
-   }
-
    if (output->state.scheduled)
       return;
 
@@ -507,6 +510,7 @@ wlc_output_set_information(struct wlc_output *output, struct wlc_output_informat
    wlc_output_information_release(&output->information);
 
    if (info) {
+      assert(!info->name.data && "Do not set name, this function will do that automatically");
       memcpy(&output->information, info, sizeof(output->information));
       memset(info, 0, sizeof(output->information));
    }
@@ -524,10 +528,13 @@ wlc_output_set_information(struct wlc_output *output, struct wlc_output_informat
 
    assert(output->active.mode != UINT_MAX && "output should have at least one current mode!");
 
+   const char *name = name_for_connector(output->information.connector);
+   chck_string_set_format(&output->information.name, "%s-%u", name, output->information.connector_id);
+
    {
       struct wlc_output_mode *mode;
       except(mode = chck_iter_pool_get(&output->information.modes, output->active.mode));
-      wlc_log(WLC_LOG_INFO, "Chose mode (%u) %dx%d", output->active.mode, mode->width, mode->height);
+      wlc_log(WLC_LOG_INFO, "%s Chose mode (%u) %dx%d", output->information.name.data, output->active.mode, mode->width, mode->height);
       wlc_output_set_resolution_ptr(output, &(struct wlc_size){ mode->width, mode->height });
    }
 }
@@ -591,7 +598,7 @@ wlc_output_link_view(struct wlc_output *output, struct wlc_view *view, enum outp
          if (*h != otherh)
             continue;
 
-         added = chck_iter_pool_insert(&output->views, (link == LINK_ABOVE ? _I : _I -1), &handle);
+         added = chck_iter_pool_insert(&output->views, (link == LINK_ABOVE ? _I : _I - 1), &handle);
          break;
       }
    } else {
@@ -637,9 +644,6 @@ wlc_output_set_sleep_ptr(struct wlc_output *output, bool sleep)
    if (!output)
       return;
 
-   if (!sleep && wlc_get_active())
-      wl_event_source_timer_update(output->timer.sleep, 1000 * output->options.idle_time);
-
    if (output->state.sleeping == sleep)
       return;
 
@@ -657,7 +661,6 @@ wlc_output_set_sleep_ptr(struct wlc_output *output, bool sleep)
    } else {
       if (output->bsurface.api.sleep) {
          // we fake sleep otherwise, by just drawing black
-         wl_event_source_timer_update(output->timer.sleep, 0);
          wl_event_source_timer_update(output->timer.idle, 0);
       }
       output->state.scheduled = output->state.activity = false;
@@ -802,6 +805,27 @@ wlc_output_focus(wlc_handle output)
    wlc_output_focus_ptr(convert_from_wlc_handle(output, "output"));
 }
 
+WLC_API const char*
+wlc_output_get_name(wlc_handle output)
+{
+   struct wlc_output *o = convert_from_wlc_handle(output, "output");
+   return (o ? o->information.name.data : NULL);
+}
+
+WLC_API enum wlc_connector_type
+wlc_output_get_connector_type(wlc_handle output)
+{
+   struct wlc_output *o = convert_from_wlc_handle(output, "output");
+   return (o ? o->information.connector : WLC_CONNECTOR_UNKNOWN);
+}
+
+WLC_API uint32_t
+wlc_output_get_connector_id(wlc_handle output)
+{
+   struct wlc_output *o = convert_from_wlc_handle(output, "output");
+   return (o ? o->information.connector_id : 0);
+}
+
 void
 wlc_output_terminate(struct wlc_output *output)
 {
@@ -828,9 +852,6 @@ wlc_output_release(struct wlc_output *output)
    if (output->timer.idle)
       wl_event_source_remove(output->timer.idle);
 
-   if (output->timer.sleep)
-      wl_event_source_remove(output->timer.sleep);
-
    wlc_output_set_information(output, NULL);
    wlc_output_set_backend_surface(output, NULL);
    chck_iter_pool_release(&output->surfaces);
@@ -851,9 +872,6 @@ wlc_output(struct wlc_output *output)
    if (!(output->timer.idle = wl_event_loop_add_timer(wlc_event_loop(), cb_idle_timer, (void*)convert_to_wlc_handle(output))))
       goto fail;
 
-   if (!(output->timer.sleep = wl_event_loop_add_timer(wlc_event_loop(), cb_sleep_timer, (void*)convert_to_wlc_handle(output))))
-      goto fail;
-
    if (!(output->wl.output = wl_global_create(wlc_display(), &wl_output_interface, 2, output, wl_output_bind)))
       goto fail;
 
@@ -869,9 +887,6 @@ wlc_output(struct wlc_output *output)
    output->state.ims = 41;
    const char *bg = getenv("WLC_BG");
    output->options.enable_bg = (chck_cstreq(bg, "0") ? false : true);
-
-   if (!chck_cstr_to_u32(getenv("WLC_IDLE_TIME"), &output->options.idle_time))
-      output->options.idle_time = 60 * 5;
 
    wlc_output_set_sleep_ptr(output, false);
    wlc_output_set_mask_ptr(output, (1<<0));

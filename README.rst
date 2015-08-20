@@ -97,8 +97,6 @@ ENV VARIABLES
 +----------------------+------------------------------------------------------+
 | ``WLC_LIBINPUT``     | Set 1 to force libinput. (Even on X11)               |
 +----------------------+------------------------------------------------------+
-| ``WLC_IDLE_TIME``    | Idle time in seconds for DPMS.                       |
-+----------------------+------------------------------------------------------+
 | ``WLC_REPEAT_DELAY`` | Keyboard repeat delay.                               |
 +----------------------+------------------------------------------------------+
 | ``WLC_REPEAT_RATE``  | Keyboard repeat rate.                                |
@@ -139,7 +137,7 @@ You will need following makedepends:
 And the following depends:
 
 - pixman
-- wayland
+- wayland 1.7+
 - libxkbcommon
 - udev
 - libinput
@@ -174,6 +172,11 @@ PACKAGING
 
 For now you can look at the `AUR recipe <https://aur.archlinux.org/packages/wlc-git/>`_ for a example.
 
+CONTRIBUTING
+------------
+
+See the `CONTRIBUTING <CONTRIBUTING.rst>`_ for more information.
+
 BINDINGS
 --------
 
@@ -184,6 +187,7 @@ SOFTWARE USING WLC
 
 - `orbment <https://github.com/Cloudef/orbment>`_ - Modular Wayland compositor
 - `ocaml-loliwm <https://github.com/Armael/ocaml-loliwm>`_ - Translation of loliwm to OCaml
+- `sway <https://github.com/SirCmpwn/sway>`_ - i3-compatible window manager for Wayland
 
 SIMILAR SOFTWARE
 ----------------

@@ -28,12 +28,14 @@ struct wlc_output_mode {
 
 struct wlc_output_information {
    struct chck_iter_pool modes;
-   struct chck_string make, model;
+   struct chck_string name, make, model;
    int32_t x, y;
    int32_t physical_width, physical_height;
    int32_t subpixel;
    int32_t scale;
+   uint32_t connector_id;
    enum wl_output_transform transform;
+   enum wlc_connector_type connector;
 };
 
 struct wlc_output {
@@ -48,7 +50,7 @@ struct wlc_output {
    struct chck_iter_pool surfaces, views, mutable;
 
    struct {
-      struct wl_event_source *idle, *sleep;
+      struct wl_event_source *idle;
    } timer;
 
    struct {
@@ -79,7 +81,6 @@ struct wlc_output {
    } active;
 
    struct {
-      uint32_t idle_time;
       bool enable_bg;
    } options;
 };
@@ -106,6 +107,5 @@ void wlc_output_set_mask_ptr(struct wlc_output *output, uint32_t mask);
 void wlc_output_get_pixels_ptr(struct wlc_output *output, bool (*pixels)(const struct wlc_size *size, uint8_t *rgba, void *arg), void *arg);
 bool wlc_output_set_views_ptr(struct wlc_output *output, const wlc_handle *views, size_t memb);
 const wlc_handle* wlc_output_get_views_ptr(struct wlc_output *output, size_t *out_memb);
-
 
 #endif /* _WLC_OUTPUT_H_ */

@@ -396,6 +396,33 @@ find_encoder_for_connector(int fd, drmModeRes *resources, drmModeConnector *conn
    return NULL;
 }
 
+static enum wlc_connector_type
+wlc_connector_for_drm_connector(uint32_t type)
+{
+   switch (type) {
+      case DRM_MODE_CONNECTOR_Unknown: return WLC_CONNECTOR_UNKNOWN;
+      case DRM_MODE_CONNECTOR_VGA: return WLC_CONNECTOR_VGA;
+      case DRM_MODE_CONNECTOR_DVII: return WLC_CONNECTOR_DVII;
+      case DRM_MODE_CONNECTOR_DVID: return WLC_CONNECTOR_DVID;
+      case DRM_MODE_CONNECTOR_DVIA: return WLC_CONNECTOR_DVIA;
+      case DRM_MODE_CONNECTOR_Composite: return WLC_CONNECTOR_COMPOSITE;
+      case DRM_MODE_CONNECTOR_SVIDEO: return WLC_CONNECTOR_SVIDEO;
+      case DRM_MODE_CONNECTOR_LVDS: return WLC_CONNECTOR_LVDS;
+      case DRM_MODE_CONNECTOR_Component: return WLC_CONNECTOR_COMPONENT;
+      case DRM_MODE_CONNECTOR_9PinDIN: return WLC_CONNECTOR_DIN;
+      case DRM_MODE_CONNECTOR_DisplayPort: return WLC_CONNECTOR_DP;
+      case DRM_MODE_CONNECTOR_HDMIA: return WLC_CONNECTOR_HDMIA;
+      case DRM_MODE_CONNECTOR_HDMIB: return WLC_CONNECTOR_HDMIB;
+      case DRM_MODE_CONNECTOR_TV: return WLC_CONNECTOR_TV;
+      case DRM_MODE_CONNECTOR_eDP: return WLC_CONNECTOR_eDP;
+      case DRM_MODE_CONNECTOR_VIRTUAL: return WLC_CONNECTOR_VIRTUAL;
+      case DRM_MODE_CONNECTOR_DSI: return WLC_CONNECTOR_DSI;
+   }
+
+   wlc_log(WLC_LOG_WARN, "Failed to resolve drm connector of type %u", type);
+   return WLC_CONNECTOR_UNKNOWN;
+}
+
 static bool
 query_drm(int fd, struct chck_iter_pool *out_infos)
 {
@@ -449,6 +476,8 @@ query_drm(int fd, struct chck_iter_pool *out_infos)
       info->info.physical_height = connector->mmHeight;
       info->info.subpixel = connector->subpixel;
       info->info.scale = 1; // weston gets this from config?
+      info->info.connector_id = connector->connector_type_id;
+      info->info.connector = wlc_connector_for_drm_connector(connector->connector_type);
 
       for (int i = 0; i < connector->count_modes; ++i) {
          struct wlc_output_mode mode = {0};

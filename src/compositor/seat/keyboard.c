@@ -131,11 +131,14 @@ defocus(struct wlc_keyboard *keyboard)
    if (!(view = convert_from_wlc_handle(keyboard->focused.view, "view")))
       goto out;
 
+   // Xwayland does own key repeating.
+   // It will not stop repeating when the window dies.
+   // Make sure this gets send to the Xwayland client whenever window dies.
+   send_release_for_keys(&keyboard->focused.resources, &keyboard->keys);
+
    struct wl_resource *surface;
    if (!(surface = wl_resource_from_wlc_resource(view->surface, "surface")))
       goto out;
-
-   send_release_for_keys(&keyboard->focused.resources, &keyboard->keys);
 
    if (view->x11.id)
       wlc_x11_window_set_active(&view->x11, false);
@@ -154,7 +157,7 @@ defocus(struct wlc_keyboard *keyboard)
       WLC_INTERFACE_EMIT(view.focus, keyboard->focused.view, false);
 
    if (view->xdg_popup)
-         wlc_view_close_ptr(view);
+      wlc_view_close_ptr(view);
 
 out:
    chck_iter_pool_flush(&keyboard->focused.resources);

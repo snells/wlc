@@ -18,7 +18,7 @@
 
 #if defined(__linux__)
 #  include <linux/version.h>
-#  if LINUX_VERSION_CODE >= KERNEL_VERSION(3,4,0)
+#  if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 4, 0)
 #     include <sys/prctl.h> /* for yama */
 #     define HAS_YAMA_PRCTL 1
 #  endif
@@ -41,7 +41,7 @@ static struct {
    struct wl_display *display;
    FILE *log_file;
    int cached_tm_mday;
-   bool active, set_ready_on_run;
+   bool active;
 } wlc;
 
 #ifndef NDEBUG
@@ -328,6 +328,37 @@ wlc_cleanup(void)
    wlc.cached_tm_mday = cached_tm_mday;
 }
 
+WLC_API struct wlc_event_source*
+wlc_event_loop_add_fd(int fd, uint32_t mask, int (*cb)(int fd, uint32_t mask, void *arg), void *arg)
+{
+   assert(wlc_event_loop());
+   return (struct wlc_event_source*)wl_event_loop_add_fd(wlc_event_loop(), fd, mask, cb, arg);
+}
+
+WLC_API struct wlc_event_source*
+wlc_event_loop_add_timer(int (*cb)(void *arg), void *arg)
+{
+   assert(wlc_event_loop());
+   return (struct wlc_event_source*)wl_event_loop_add_timer(wlc_event_loop(), cb, arg);
+}
+
+WLC_API bool
+wlc_event_source_timer_update(struct wlc_event_source *source, int32_t ms_delay)
+{
+   assert(source);
+   assert(wlc_event_loop());
+   return (wl_event_source_timer_update((struct wl_event_source*)source, ms_delay) == 0);
+}
+
+WLC_API void
+wlc_event_source_remove(struct wlc_event_source *source)
+{
+   assert(source);
+
+   if (wlc.display)
+      wl_event_source_remove((struct wl_event_source*)source);
+}
+
 WLC_API void
 wlc_vlog(enum wlc_log_type type, const char *fmt, va_list args)
 {
@@ -347,7 +378,7 @@ wlc_vlog(enum wlc_log_type type, const char *fmt, va_list args)
          fprintf(out, "(ERROR) ");
          break;
 
-      default:break;
+      default: break;
    }
 
    vfprintf(out, fmt, args);
@@ -405,14 +436,27 @@ wlc_run(void)
    if (!wlc.display)
       return;
 
-   // Called when no xwayland is requested
-   if (wlc.set_ready_on_run) {
-      WLC_INTERFACE_EMIT(compositor.ready);
-      wlc.set_ready_on_run = false;
-   }
+   bool emit_ready = true;
+   const char *xwayland = getenv("WLC_XWAYLAND");
+   if (!xwayland || !chck_cstreq(xwayland, "0"))
+      emit_ready = !wlc_xwayland_init();
 
-   wl_display_run(wlc.display);
+   // Emit ready immediately when no Xwayland
+   if (emit_ready)
+      WLC_INTERFACE_EMIT(compositor.ready);
+
+   wlc_set_active(true);
+
+   if (wlc_compositor_is_good(&wlc.compositor))
+      wl_display_run(wlc.display);
+
    wlc_cleanup();
+}
+
+WLC_API enum wlc_backend_type
+wlc_get_backend_type(void)
+{
+   return wlc.compositor.backend.type;
 }
 
 WLC_API void
@@ -450,12 +494,12 @@ wlc_init(const struct wlc_interface *interface, int argc, char *argv[])
 
    unsetenv("TERM");
    const char *x11display = getenv("DISPLAY");
-   bool privilidged = false;
-   const bool has_logind  = wlc_logind_available();
+   bool privileged = false;
+   const bool has_logind = wlc_logind_available();
 
    if (getuid() != geteuid() || getgid() != getegid()) {
       wlc_log(WLC_LOG_INFO, "Doing work on SUID/SGID side and dropping permissions");
-      privilidged = true;
+      privileged = true;
    } else if (getuid() == 0) {
       die("Do not run wlc compositor as root");
    } else if (!x11display && !has_logind && access("/dev/input/event0", R_OK | W_OK) != 0) {
@@ -484,14 +528,14 @@ wlc_init(const struct wlc_interface *interface, int argc, char *argv[])
 #ifdef HAS_LOGIND
    // Init logind if we are not running as SUID.
    // We need event loop for logind to work, and thus we won't allow it on SUID process.
-   if (!privilidged && !x11display && has_logind) {
+   if (!privileged && !x11display && has_logind) {
       if (!(wlc.display = wl_display_create()))
          die("Failed to create wayland display");
       if (!(vt = wlc_logind_init("seat0")))
          die("Failed to init logind");
    }
 #else
-   (void)privilidged;
+   (void)privileged;
 #endif
 
    if (!x11display)
@@ -507,7 +551,6 @@ wlc_init(const struct wlc_interface *interface, int argc, char *argv[])
       wlc_fd_init(argc, argv, (vt != 0));
       wlc.display = display;
    }
-
 
    // -- permissions are now dropped
 
@@ -547,19 +590,9 @@ wlc_init(const struct wlc_interface *interface, int argc, char *argv[])
          die("Failed to init input");
    }
 
-   memcpy(&wlc.interface, interface, sizeof(wlc.interface));
-
    if (!wlc_compositor(&wlc.compositor))
       die("Failed to init compositor");
 
-   const char *xwayland = getenv("WLC_XWAYLAND");
-   if (!xwayland || !chck_cstreq(xwayland, "0")) {
-      if (!(wlc_xwayland_init()))
-         die("Failed to init xwayland");
-   } else {
-      wlc.set_ready_on_run = true;
-   }
-
-   wlc_set_active(true);
-   return wlc_compositor_is_good(&wlc.compositor);
+   memcpy(&wlc.interface, interface, sizeof(wlc.interface));
+   return true;
 }
