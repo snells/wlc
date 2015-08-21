@@ -405,8 +405,6 @@ bool wlc_view_set_app_id(wlc_handle view, const char *app_id);
 
 struct wlc_interface *bare_s_interface();
 void exec_term();
-void cl_relayout(wlc_handle output);
 void cl_exec(char *bin);
-void cl_set_geo(wlc_handle view, int32_t x, int32_t y, uint32_t w, uint32_t h);
 
 #endif /* _WLC_H_ */
